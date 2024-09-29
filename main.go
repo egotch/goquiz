@@ -1,56 +1,45 @@
 package main
 
 import (
-	"encoding/csv"
 	"flag"
 	"fmt"
-	"os"
+	"time"
 
 	"github.com/egotch/goquiz/helpers"
-  "github.com/egotch/goquiz/models"
+	"github.com/egotch/goquiz/models"
 )
 
 func main()  {
 
-  var score int = 0
-
+  // get arg flags from cmd input
+  timePtr := flag.Int("time", 30, "allowed duration of quiz in seconds")
   csvPtr := flag.String("csv", "problems.csv", "csv file name to read in format of 'question,answer'")
-
   flag.Parse()
 
-  file, err := os.Open(*csvPtr)
-  if err != nil {
-    helpers.Exit(fmt.Sprintf("Error opening file: %s\n", *csvPtr))
-  }
-
-  _r := csv.NewReader(file)
-  lines, err := _r.ReadAll()
-  if err != nil {
-    helpers.Exit(fmt.Sprintf("Failed to parse csv file: %s", *csvPtr))
-  }
-
+  // declare vars
+  var score int = 0
+  lines := helpers.GetFile(*&csvPtr)
+  timer := time.NewTimer(time.Duration(*timePtr) * time.Second)
+  answerCh := make(chan string)
+  
 
   problems := models.ParseLines(lines)
 
   for i, p := range problems {
-    var answerIn string
-    fmt.Printf("Question #%d/%d:    %s=  ",i+1, len(problems), p.Q)
 
-    // ask for user input
-    fmt.Scanf("%s\n", &answerIn)
-    if err != nil {
-      panic(err)
-    }
+    go models.GetAnswer(answerCh, problems, &p, i)
 
-    // compare answer
-    if answerIn == p.A {
-      score += 1
+    select {
+
+    case <- timer.C:
+      helpers.Exit(fmt.Sprintf("\n\nTIME'S UP!\n\nYour score = %d / %d\n", score, len(lines)))
+
+    case answerIn := <- answerCh:
+      models.IncScore(&score, answerIn, &p)
     }
   }
 
-  fmt.Println()
-  fmt.Printf("Your score = %d / %d\n", score, len(lines))
-  fmt.Println()
+  defer fmt.Printf("Your score = %d / %d\n", score, len(lines))
 
 }
 
